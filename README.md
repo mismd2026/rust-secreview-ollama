@@ -97,6 +97,30 @@ pip install semgrep checkov pyyaml
 - **段階2**：SARIF とコードの前後を読み込み、Ollama（ローカルLLM）と RAG（OWASP ASVS・CWE・RustSec）で、優先度付け・誤検知の判定・修正案を付けた診断報告書を出す。ルーティングと認可の処理を読ませて、V1・V2 のようなロジックの問題の候補も出す。コードを外部に送らない構成にする。
 - **段階3**：ツールのみ／ツール＋LLM／LLMのみ で検出率と誤検知を比べた表を作り、LLMに任せられる範囲と人が見るべき範囲を示す。
 
+## データベース
+
+SQLite を diesel 経由で使います（`src/db.rs`、起動時にテーブルを作成）。
+
+```mermaid
+erDiagram
+    users ||--o{ expenses : "申請"
+
+    users {
+        int id PK
+        text name UK
+        text role
+        text password
+    }
+    expenses {
+        int id PK
+        int user_id "users.id を参照"
+        text title
+        int amount
+        text card_number
+        text status
+    }
+```
+
 ## ファイル
 
 | パス | 内容 |
