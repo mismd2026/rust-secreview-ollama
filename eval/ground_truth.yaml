@@ -1,0 +1,177 @@
+# 仕込んだ脆弱性の正解表（評価用）
+# ソースコード側にはヒントとなるコメントを書いていない。検出の答え合わせはこのファイルだけで行う。
+# expected: その脆弱性を見つけられると想定している手段
+#   tool  = 決まった検査ツール（Semgrep / cargo audit / gitleaks / Trivy / clippy）
+#   llm   = LLMのロジックレビュー（ツールでは見つけにくいもの）
+
+vulnerabilities:
+  - id: V1
+    title: 他人の経費を番号の書き換えで閲覧できる（IDOR）
+    cwe: CWE-639
+    owasp: A01 Broken Access Control
+    severity: high
+    file: src/handlers.rs
+    function: get_expense
+    lines: [66, 69]
+    expected: [llm]
+    note: ログイン確認はあるが、取得した経費のuser_idが本人か確認していない
+
+  - id: V2
+    title: 一般社員が経費を承認できる（権限チェック漏れ）
+    cwe: CWE-285
+    owasp: A01 Broken Access Control
+    severity: high
+    file: src/handlers.rs
+    function: approve_expense
+    lines: [100, 102]
+    expected: [llm]
+    note: role == "approver" の確認がない。自分の申請を自分で承認することもできる
+
+  - id: V3
+    title: 検索でSQLインジェクションが起きる
+    cwe: CWE-89
+    owasp: A03 Injection
+    severity: critical
+    file: src/handlers.rs
+    function: search_expenses
+    lines: [120]
+    expected: [tool, llm]
+    note: diesel::sql_query に format! で組み立てた文字列を渡している。q=' OR 1=1 -- で全員分が返る
+
+  - id: V4
+    title: JWTの署名を検証していない
+    cwe: CWE-347
+    owasp: A07 Identification and Authentication Failures
+    severity: critical
+    file: src/auth.rs
+    function: current_user
+    lines: [41]
+    expected: [tool, llm]
+    note: 署名なしで作った偽トークンで、任意のユーザー・任意のroleになりすませる
+
+  - id: V5
+    title: JWTの秘密鍵がソースに埋め込まれている
+    cwe: CWE-798
+    owasp: A07 Identification and Authentication Failures
+    severity: high
+    file: src/auth.rs
+    function: (定数) JWT_SECRET
+    lines: [6]
+    expected: [tool]
+    note: ダミー値。環境変数やSecret Managerから読むべき
+
+  - id: V6
+    title: 境界チェックなしのunsafeで未定義動作になる
+    cwe: CWE-125
+    owasp: A04 Insecure Design
+    severity: high
+    file: src/handlers.rs
+    function: expense_title
+    lines: [146]
+    expected: [tool, llm]
+    note: offsetが文字列長を超える、またはUTF-8の文字の途中を指すと未定義動作
+
+  - id: V7
+    title: CORSを全許可している
+    cwe: CWE-942
+    owasp: A05 Security Misconfiguration
+    severity: medium
+    file: src/main.rs
+    function: main
+    lines: [19]
+    expected: [tool, llm]
+    note: Cors::permissive() はどのオリジンからの資格情報付きリクエストも許す
+
+  - id: V8
+    title: ログにパスワードとカード番号が出力される
+    cwe: CWE-532
+    owasp: A09 Security Logging and Monitoring Failures
+    severity: high
+    file: src/handlers.rs
+    function: [login, create_expense]
+    lines: [36, 85]
+    expected: [tool, llm]
+    note: Debug表示で構造体をそのままログに出している
+
+  - id: V9
+    title: 既知の脆弱性がある依存crate（tar 0.4.35）
+    cwe: CWE-1395
+    owasp: A06 Vulnerable and Outdated Components
+    severity: medium
+    file: Cargo.toml
+    function: "-"
+    lines: [19]
+    expected: [tool]
+    match_rules: [RUSTSEC-2021-0080, RUSTSEC-2026-0067, RUSTSEC-2026-0068]
+    note: RUSTSEC-2021-0080。cargo audit / cargo deny で検出される想定（同じ版に後から追加の報告も出ている）
+
+  - id: V10
+    title: コンテナがrootで動く
+    cwe: CWE-250
+    owasp: A05 Security Misconfiguration
+    severity: low
+    file: Dockerfile
+    function: "-"
+    lines: [6]
+    expected: [tool]
+    match_rules: [CKV_DOCKER_3]
+    note: USER指定がない。Checkov（CKV_DOCKER_3）で検出される想定
+
+  - id: V11
+    title: パスワードを平文で保存・照合している
+    cwe: CWE-256
+    owasp: A02 Cryptographic Failures
+    severity: high
+    file: src/db.rs
+    function: migrate_and_seed
+    lines: [83]
+    expected: [llm]
+    note: ハッシュ化（argon2等）していない。login もSQL上で平文比較している
+
+  - id: V12
+    title: カード番号を全桁のまま保存し、APIでも全桁を返している
+    cwe: CWE-359
+    owasp: A02 Cryptographic Failures
+    severity: high
+    file: src/db.rs
+    function: Expense
+    lines: [46, 94]
+    expected: [llm]
+    note: PCI DSSでは表示時のマスキング（先頭6桁・末尾4桁まで）や保存時の保護が求められる
+
+# 正しく実装している箇所（誤検知の確認用）
+# ここを脆弱性と判定したら誤検知として数える
+negatives:
+  - id: N1
+    file: src/handlers.rs
+    function: list_expenses
+    note: user_id で本人の経費だけに絞り込んでいる
+  - id: N2
+    file: src/handlers.rs
+    function: expense_title
+    note: 取得時の本人確認は正しい（問題は V6 の unsafe だけ）
+  - id: N3
+    file: src/db.rs
+    function: migrate_and_seed
+    note: sql_query を使っているが固定文字列でユーザー入力を含まない（SQLインジェクションではない）
+
+# 仕込んでいないが、検証中に実在の報告として見つかった依存crateの脆弱性
+# （cargo audit / cargo deny の結果。RustSecのデータベースは日々更新されるので、件数は実行日で変わる）
+unplanted:
+  - id: U1
+    crate: h2 0.3.27
+    advisory: RUSTSEC-2026-0258
+    found_on: 2026-11-12
+    status: 上流待ち
+    note: actix-web 4 系（actix-http 3）が h2 0.3 に依存しており、こちらでは上げられない
+  - id: U2
+    crate: libsqlite3-sys 0.38.2
+    advisory: RUSTSEC-2026-0459
+    found_on: 2026-11-12
+    status: 上流待ち
+    note: 修正版は 0.39 以上だが、diesel 2.3.14 が 0.38 までしか受け付けない
+  - id: U3
+    rule: CKV_DOCKER_2
+    found_on: 2026-11-12
+    status: 受容（低）
+    note: HEALTHCHECK がない。検証用アプリなので今回は対応しない
