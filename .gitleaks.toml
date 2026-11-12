@@ -1,0 +1,17 @@
+# gitleaks の設定：標準ルールに、Rustの定数に埋め込まれた秘密情報を探す自作ルールを足す
+title = "rust-secreview-ollama"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "rust-const-secret"
+description = "Rustの定数に埋め込まれた秘密情報"
+regex = '''const\s+[A-Z0-9_]*(?:SECRET|KEY|TOKEN|PASSWORD)[A-Z0-9_]*\s*:\s*&str\s*=\s*"([^"]{16,})"'''
+secretGroup = 1
+entropy = 3.0
+keywords = ["const"]
+
+[allowlist]
+description = "ビルド成果物と検査結果は対象外"
+paths = ['''^target/''', '''^reports/''']

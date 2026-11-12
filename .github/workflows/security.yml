@@ -1,0 +1,78 @@
+name: security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write   # Code scanning に SARIF を送るため
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    env:
+      GITLEAKS_VERSION: "8.21.2"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Rust tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit,cargo-deny,clippy-sarif
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python tools
+        run: pip install semgrep checkov pyyaml
+
+      - name: Install gitleaks
+        run: |
+          curl -sSL -o /tmp/gitleaks.tgz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tar xzf /tmp/gitleaks.tgz -C /usr/local/bin gitleaks
+
+      # 手元と同じスクリプトで検査する（脆弱性は意図的なので、ここでは失敗にしない）
+      - name: Run scanners
+        run: ./scripts/run_local.sh
+
+      - name: Job summary
+        if: always()
+        run: cat reports/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: cargo deny（全項目）
+        continue-on-error: true
+        run: cargo deny check
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-reports
+          path: reports/
+
+      # SARIF をツールごとに Code scanning へ送る
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with: { sarif_file: reports/semgrep.sarif, category: semgrep }
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with: { sarif_file: reports/clippy.sarif, category: clippy }
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with: { sarif_file: reports/cargo-audit.sarif, category: cargo-audit }
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with: { sarif_file: reports/gitleaks.sarif, category: gitleaks }
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with: { sarif_file: reports/checkov.sarif, category: checkov }

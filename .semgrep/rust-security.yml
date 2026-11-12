@@ -1,0 +1,77 @@
+rules:
+  - id: diesel-sql-query-with-format
+    languages: [rust]
+    severity: ERROR
+    message: >-
+      diesel::sql_query に format! で組み立てた文字列を渡しています。SQLインジェクションの恐れがあります。
+      クエリビルダーを使うか、.bind() でパラメータを分けて渡してください。
+    metadata:
+      cwe: "CWE-89"
+      owasp: "A03:2021 Injection"
+    pattern-either:
+      - pattern: diesel::sql_query(format!(...))
+      - pattern: |
+          let $SQL = format!(...);
+          ...
+          diesel::sql_query($SQL)
+
+  - id: jwt-signature-validation-disabled
+    languages: [rust]
+    severity: ERROR
+    message: >-
+      JWTの署名検証を無効にしています。改ざんされたトークンを受け入れてしまいます。
+    metadata:
+      cwe: "CWE-347"
+      owasp: "A07:2021 Identification and Authentication Failures"
+    pattern: $V.insecure_disable_signature_validation()
+
+  - id: hardcoded-secret-const
+    languages: [rust]
+    severity: WARNING
+    message: >-
+      秘密情報らしき定数 $NAME がソースに埋め込まれています。環境変数やSecret Managerから読み込んでください。
+    metadata:
+      cwe: "CWE-798"
+    patterns:
+      - pattern: |
+          const $NAME: &str = "...";
+      - metavariable-regex:
+          metavariable: $NAME
+          regex: (?i).*(secret|key|token|password).*
+
+  - id: unchecked-memory-access
+    languages: [rust]
+    severity: WARNING
+    message: >-
+      境界やUTF-8の検証を省く関数を unsafe で使っています。外部入力が届く場合は未定義動作になります。
+    metadata:
+      cwe: "CWE-125"
+    pattern-either:
+      - pattern: std::str::from_utf8_unchecked(...)
+      - pattern: $X.get_unchecked(...)
+
+  - id: actix-cors-permissive
+    languages: [rust]
+    severity: WARNING
+    message: >-
+      Cors::permissive() はすべてのオリジン・メソッド・ヘッダーを許可します。許可するオリジンを明示してください。
+    metadata:
+      cwe: "CWE-942"
+    pattern: Cors::permissive()
+
+  - id: log-debug-format
+    languages: [rust]
+    severity: INFO
+    message: >-
+      構造体を {:?} でそのままログに出しています。パスワードやカード番号などが含まれていないか確認してください。
+    metadata:
+      cwe: "CWE-532"
+    patterns:
+      - pattern-either:
+          - pattern: info!($FMT, ...)
+          - pattern: debug!($FMT, ...)
+          - pattern: warn!($FMT, ...)
+          - pattern: error!($FMT, ...)
+      - metavariable-regex:
+          metavariable: $FMT
+          regex: .*\{:\?\}.*
