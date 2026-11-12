@@ -1,0 +1,24 @@
+[package]
+name = "expense-api"
+version = "0.1.0"
+edition = "2021"
+description = "DevSecOps検証用：脆弱性を意図的に仕込んだ経費精算API（本番利用禁止）"
+license = "MIT"
+publish = false
+
+[dependencies]
+actix-web = "4"
+actix-cors = "0.7"
+diesel = { version = "2", features = ["sqlite", "r2d2"] }
+libsqlite3-sys = { version = "0.38", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+jsonwebtoken = "9"
+log = "0.4"
+env_logger = "0.11"
+tar = { version = "=0.4.35", default-features = false }
+
+[lints.clippy]
+undocumented_unsafe_blocks = "warn"
+multiple_unsafe_ops_per_block = "warn"
+unwrap_used = "warn"
